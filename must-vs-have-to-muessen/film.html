@@ -1,0 +1,361 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Must vs. have to vs. müssen (9:16)</title>
+<link rel="stylesheet" href="fonts/fonts.css">
+<style>
+html,body{margin:0;height:100%;background:#1b1612;color:#cdbfa8;font:13px/1.4 ui-monospace,monospace}
+body{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px}
+canvas{height:calc(100vh - 64px);aspect-ratio:var(--ar,.5625);display:block}
+.ctl{display:flex;gap:12px;align-items:center;width:calc((100vh - 64px)*var(--ar,.5625))}
+.ctl input{flex:1}
+.ctl button{font:inherit;color:#f2e6d0;background:#2b2420;border:1px solid #4a3e34;border-radius:6px;padding:4px 10px;cursor:pointer}
+body.render{display:block} body.render .ctl{display:none} body.render canvas{height:auto;aspect-ratio:auto}
+</style>
+</head>
+<body>
+<canvas id="c" aria-label="Must vs. have to vs. müssen: a vertical explainer"></canvas>
+<div class="ctl"><button id="pp">Pause</button><input id="scrub" type="range" min="0" max="26" step="0.001" value="0"><span id="tc">0.00 s</span></div>
+<script src="engine.js"></script>
+<script>
+(() => {
+'use strict';
+const {clamp, lerp, prog, bell, E, hash, rgba, glow, add, mixRGB, flash, rng} = M;
+
+/* 1. palette, type, format ------------------------------------------------ */
+const C = {bg:'#f1e4cc', ink:'#2b2420', muted:'#5e4d3e', faint:'#9c8a74', sepia:'#8a6a48',
+  blue:'#2f5d8f', red:'#b5432f', gold:'#c08a1e', goldInk:'#875a08', green:'#3f6f2e', cream:'#fbf4e6', night:'#2c3a5e'};
+// blue = outside pressure (have to) · red = inner drive (must) · gold = müssen · green = no obligation
+Object.assign(T, {DISP:'"Gelasio", Georgia, serif', BODY:'"Inter", system-ui, sans-serif', MONO:'"DMono", ui-monospace, monospace',
+  fg:C.ink, muted:C.muted, faint:C.faint, calloutPx:30, calloutSubPx:32});
+const W = 1080, H = 1920, DUR = 26, CX = 540, FY = 990;
+const film = Film.create({W, H, FPS:30, DUR, bg:C.bg, fadeIn:0, grain:.07, vignette:.22});
+const HL = `500 96px ${T.DISP}`, HLI = `italic 500 96px ${T.DISP}`, EX = `400 44px ${T.BODY}`, EXB = `500 44px ${T.BODY}`;
+
+/* 2. timing ---------------------------------------------------------------- */
+const TM = {
+  titleOut:2.55, merge:[2.5, 3.0],
+  ey2:3.05, l2:3.2, arrIn:3.45, ex2:3.9, out2:6.35, retract:[6.3, 6.75],
+  ey3:6.85, l3:7.0, arrOut:6.9, ex3:7.55, out3:9.85,
+  slide:[9.9, 10.5], ey4:10.45, l4:10.6, light:10.9, ex4:11.0, out4:13.4,
+  gather:[13.4, 13.9], seed:[13.6, 14.1], ey5:14.0, l5:14.15, arrive:14.75, ex5:15.05, out5:17.85,
+  up:[17.9, 18.5], ey6:18.35, l6:18.5, cardA:19.0, cardB:19.85, out6:22.15,
+  flash:22.6, fin:22.65,
+};
+const ST = .09, GROW = .45;   // arrow stagger and draw time
+film.blur = [[TM.slide[0], TM.slide[1], 12], [TM.gather[0], TM.gather[1], 12]];
+
+/* 3. precomputed art ------------------------------------------------------- */
+// Parchment: mottled washes, burnt edges, a double rule and corner flourishes, painted once.
+const paper = document.createElement('canvas'); paper.width = W; paper.height = H;
+(() => {
+  const g = paper.getContext('2d'), r = rng(11);
+  g.fillStyle = C.bg; g.fillRect(0, 0, W, H);
+  for (let i = 0; i < 70; i++) glow(g, r() * W, r() * H, 80 + r() * 260, r() < .5 ? '#e2cca2' : '#f8efde', .22 + r() * .15, .6);
+  const e = g.createRadialGradient(W / 2, H / 2, H * .3, W / 2, H / 2, H * .62);
+  e.addColorStop(0, 'rgba(201,168,119,0)'); e.addColorStop(1, 'rgba(176,138,88,.45)'); g.fillStyle = e; g.fillRect(0, 0, W, H);
+  g.strokeStyle = rgba(C.sepia, .55); g.lineWidth = 2.5; g.strokeRect(34, 34, W - 68, H - 68);
+  g.strokeStyle = rgba(C.sepia, .35); g.lineWidth = 1.2; g.strokeRect(48, 48, W - 96, H - 96);
+  [[48, 48, 1, 1], [W - 48, 48, -1, 1], [48, H - 48, 1, -1], [W - 48, H - 48, -1, -1]].forEach(([x, y, sx, sy]) => {
+    g.save(); g.translate(x, y); g.scale(sx, sy); g.strokeStyle = rgba(C.sepia, .6); g.lineWidth = 2.2; g.lineCap = 'round';
+    for (const [ox, oy, rot] of [[70, 20, 0], [20, 70, 1]]) {
+      g.beginPath();
+      for (let k = 0; k <= 60; k++) { const th = k / 60 * 9.5, rr = 4 + th * 3.4; const px = ox + Math.cos(th + rot * 1.57) * rr, py = oy + Math.sin(th + rot * 1.57) * rr; k ? g.lineTo(px, py) : g.moveTo(px, py); }
+      g.stroke();
+    }
+    g.beginPath(); g.moveTo(100, 14); g.bezierCurveTo(160, 0, 200, 30, 260, 12); g.moveTo(14, 100); g.bezierCurveTo(0, 160, 30, 200, 12, 260); g.stroke();
+    g.restore();
+  });
+})();
+
+// Arrow ring geometry shared by "have to" (outer → inner) and "must" (inner → outer).
+const NA = 8, ring = (i, rx, ry) => { const a = -Math.PI / 2 + Math.PI / NA + i * 2 * Math.PI / NA; return [CX + Math.cos(a) * rx, FY + Math.sin(a) * ry]; };
+const OUT = [400, 305], IN = [228, 214], ICON = [458, 352];
+
+/* drawing helpers */
+function curvedArrow(ctx, x0, y0, x1, y1, p0, p1, col, w, bend = 22) {
+  // draws the part of a slightly bent arrow between fractions p0..p1 of its length; head at p1
+  if (p1 - p0 <= .001) return;
+  const mx = (x0 + x1) / 2 - (y1 - y0) / Math.hypot(x1 - x0, y1 - y0) * bend, my = (y0 + y1) / 2 + (x1 - x0) / Math.hypot(x1 - x0, y1 - y0) * bend;
+  const pt = u => [(1 - u) * (1 - u) * x0 + 2 * (1 - u) * u * mx + u * u * x1, (1 - u) * (1 - u) * y0 + 2 * (1 - u) * u * my + u * u * y1];
+  ctx.save(); ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = w; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.beginPath(); for (let k = 0; k <= 20; k++) { const [x, y] = pt(lerp(p0, p1, k / 20)); k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); } ctx.stroke();
+  const [hx, hy] = pt(p1), [bx, by] = pt(Math.max(0, p1 - .04)), an = Math.atan2(hy - by, hx - bx), h = w * 3.3 * clamp((p1 - p0) * 4);
+  ctx.beginPath(); ctx.moveTo(hx + Math.cos(an) * h * .55, hy + Math.sin(an) * h * .55);
+  ctx.lineTo(hx + Math.cos(an + 2.45) * h, hy + Math.sin(an + 2.45) * h); ctx.lineTo(hx + Math.cos(an - 2.45) * h, hy + Math.sin(an - 2.45) * h); ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+function heartPath(ctx, x, y, s) {
+  ctx.beginPath(); ctx.moveTo(x, y + s * .9);
+  ctx.bezierCurveTo(x - s * 1.25, y + s * .05, x - s * .75, y - s * .95, x, y - s * .35);
+  ctx.bezierCurveTo(x + s * .75, y - s * .95, x + s * 1.25, y + s * .05, x, y + s * .9); ctx.closePath();
+}
+function icon(ctx, kind, x, y, s, col, a) {
+  if (a <= .01) return;
+  ctx.save(); ctx.globalAlpha *= a; ctx.translate(x, y); ctx.scale(s, s); ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = 3.2; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  if (kind === 'clock') { ctx.fillStyle = C.cream; ctx.beginPath(); ctx.arc(0, 0, 22, 0, 7); ctx.fill(); ctx.stroke(); ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -14); ctx.moveTo(0, 0); ctx.lineTo(10, 5); ctx.stroke(); }
+  else if (kind === 'law') { ctx.font = `700 50px ${T.DISP}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('§', 0, 2); }
+  else if (kind === 'office') { ctx.fillStyle = C.cream; ctx.fillRect(-16, -24, 32, 48); ctx.strokeRect(-16, -24, 32, 48); ctx.fillStyle = col; for (let r = 0; r < 4; r++) for (let c = 0; c < 2; c++) ctx.fillRect(-10 + c * 13, -18 + r * 11, 7, 6); }
+  else if (kind === 'book') { ctx.fillStyle = C.cream; ctx.fillRect(-18, -22, 36, 44); ctx.strokeRect(-18, -22, 36, 44); ctx.beginPath(); ctx.moveTo(-11, -22); ctx.lineTo(-11, 22); ctx.moveTo(-4, -8); ctx.lineTo(12, -8); ctx.moveTo(-4, 0); ctx.lineTo(12, 0); ctx.stroke(); }
+  else if (kind === 'heart') { heartPath(ctx, 0, 0, 20); ctx.fill(); }
+  else if (kind === 'bulb') { ctx.fillStyle = C.cream; ctx.beginPath(); ctx.arc(0, -6, 15, 0, 7); ctx.fill(); ctx.stroke(); ctx.fillStyle = col; ctx.fillRect(-7, 11, 14, 9);
+    for (let k = 0; k < 5; k++) { const an = -Math.PI / 2 + (k - 2) * .6; ctx.beginPath(); ctx.moveTo(Math.cos(an) * 21, -6 + Math.sin(an) * 21); ctx.lineTo(Math.cos(an) * 29, -6 + Math.sin(an) * 29); ctx.stroke(); } }
+  ctx.restore();
+}
+function figure(ctx, x, y, a, sx = 1) {
+  if (a <= .01) return;
+  ctx.save(); ctx.globalAlpha *= a; ctx.translate(x, y); ctx.scale(sx, 1);
+  ctx.fillStyle = C.cream; ctx.strokeStyle = C.ink; ctx.lineWidth = 6; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(-175, 150); ctx.bezierCurveTo(-170, 40, -110, 10, -42, 0); ctx.lineTo(-30, -36); ctx.lineTo(30, -36); ctx.lineTo(42, 0);
+  ctx.bezierCurveTo(110, 10, 170, 40, 175, 150); ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(-42, 0); ctx.lineTo(0, 46); ctx.lineTo(42, 0); ctx.stroke();                      // collar
+  ctx.beginPath(); ctx.arc(0, -98, 64, 0, 7); ctx.fill(); ctx.stroke();                                       // head
+  ctx.fillStyle = C.ink; ctx.beginPath(); ctx.arc(-22, -102, 5.5, 0, 7); ctx.arc(22, -102, 5.5, 0, 7); ctx.fill();
+  ctx.lineWidth = 4.5; ctx.beginPath(); ctx.moveTo(-34, -120); ctx.lineTo(-12, -116); ctx.moveTo(34, -120); ctx.lineTo(12, -116); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(-14, -70); ctx.quadraticCurveTo(0, -66, 14, -70); ctx.stroke();
+  ctx.restore();
+}
+
+/* 4. scenes ---------------------------------------------------------------- */
+film.scene(0, DUR, ctx => ctx.drawImage(paper, 0, 0));
+
+// Scene 1: title, the ribbon dividing English | German
+const ribX = (y, k) => CX + 22 * Math.sin(y * .011 + k * .9) + (k - 1) * 9;
+film.scene(0, TM.merge[1], (ctx, t) => {
+  const fade = 1 - E.inCubic(prog(t, 2.1, 2.55)), m = E.inOutCubic(prog(t, ...TM.merge));
+  const b = E.outCubic(prog(t, 0, .9));
+  // washes: two on the English side, one gold on the German side; the blue one glides to centre stage
+  glow(ctx, lerp(285, CX, m), lerp(950, FY, m), lerp(230, 330, m) * (.5 + .5 * b), C.blue, .34, .7);
+  glow(ctx, 320, 1130, 220 * (.5 + .5 * b), C.red, .3 * (1 - m), .7);
+  glow(ctx, 795, 1040, 270 * (.5 + .5 * b), C.gold, .34 * (1 - m), .7);
+  // three ribbon strands drawn down the middle
+  [C.red, C.gold, C.blue].forEach((col, k) => {
+    const p = E.inOutCubic(prog(t, .05 + k * .08, 1.05 + k * .08)), y1 = lerp(640, 1400, p);
+    if (p <= 0) return; ctx.save(); ctx.globalAlpha = fade * .85; ctx.strokeStyle = col; ctx.lineWidth = 5; ctx.lineCap = 'round';
+    ctx.beginPath(); for (let y = 640; y <= y1; y += 8) { y === 640 ? ctx.moveTo(ribX(y, k), y) : ctx.lineTo(ribX(y, k), y); } ctx.stroke(); ctx.restore();
+  });
+  const la = E.outCubic(prog(t, .95, 1.3)) * fade;
+  T.label(ctx, 'EN', 285, 1080, `500 190px ${T.DISP}`, C.ink, la, 'center');
+  T.label(ctx, 'DE', 795, 1080, `500 190px ${T.DISP}`, C.ink, la, 'center');
+  T.eyebrow(ctx, [{s:'ENGLISH', c:C.blue}, {s:' · ', c:C.muted}, {s:'DEUTSCH', c:C.goldInk}], CX, 300, t, .15, {size:32, align:'center', out:[TM.titleOut, .25]});
+  T.line(ctx, [{s:'“Must” vs.', f:HL, c:C.ink}], CX, 420, t, {t0:.3, align:'center', out:[TM.titleOut, .3]});
+  T.line(ctx, [{s:'“have to”', f:HLI, c:C.blue}], CX, 526, t, {t0:.45, align:'center', out:[TM.titleOut, .3]});
+});
+
+// Scenes 2–3: the figure, with its wash shifting from blue (outside) to red (inside); slides off at 9.9
+const slideX = t => -W * E.inOutCubic(prog(t, ...TM.slide));
+const washCol = t => mixRGB(C.blue, C.red, E.inOutCubic(prog(t, 6.4, 7.1)));
+film.scene(2.6, TM.slide[1] + .05, (ctx, t) => {
+  ctx.translate(slideX(t), 0); ctx.globalAlpha = 1 - E.inCubic(prog(t, ...TM.slide));
+  if (t >= TM.merge[1]) glow(ctx, CX, FY, 330, washCol(t), .34, .7);
+  const squeeze = 1 - .045 * bell(t, 3.95, 4.9);
+  figure(ctx, CX, FY + 40, E.outCubic(prog(t, 2.6, 3.05)), squeeze);
+  // the heart lights at the chest for "must"
+  const h = prog(t, 6.75, 7.2);
+  if (h > 0) {
+    const s = 26 * E.outBack(h) * (1 + .08 * Math.sin((t - 6.75) * 7) * prog(t, 7.2, 7.6));
+    glow(ctx, CX, FY + 95, 120, C.red, .35 * h, .6);
+    ctx.fillStyle = C.red; heartPath(ctx, CX, FY + 95, s); ctx.fill();
+  }
+});
+
+// Scene 2: HAVE TO, arrows press in from rules, clocks and offices
+const ICONS_IN = ['clock', 'law', 'office', 'book'], ICONS_OUT = ['heart', 'bulb'];
+film.scene(2.9, TM.retract[1] + .05, (ctx, t) => {
+  const r = E.inCubic(prog(t, ...TM.retract));
+  for (let i = 0; i < NA; i++) {
+    const t0 = TM.arrIn + i * ST, p = E.outCubic(prog(t, t0, t0 + GROW)); if (p <= 0) continue;
+    const press = 8 * Math.sin((t - t0) * 5 + i) * prog(t, t0 + GROW, t0 + GROW + .4);
+    const [ox, oy] = ring(i, OUT[0], OUT[1]), [ix, iy] = ring(i, IN[0] + press, IN[1] + press);
+    curvedArrow(ctx, ox, oy, ix, iy, 0, p * (1 - r), C.blue, 7);
+    const [cx, cy] = ring(i, ICON[0], ICON[1]);
+    icon(ctx, ICONS_IN[i % 4], cx, cy, .85 + .15 * E.outBack(p), C.blue, E.outCubic(prog(t, t0, t0 + .25)) * (1 - r));
+  }
+  T.eyebrow(ctx, [{s:'HAVE TO', c:C.blue}], CX, 300, t, TM.ey2, {size:32, align:'center', out:[TM.out2, .25]});
+  T.line(ctx, [{s:'Pressure from', f:HL, c:C.ink}], CX, 420, t, {t0:TM.l2, align:'center', out:[TM.out2, .3]});
+  T.line(ctx, [{s:'outside.', f:HLI, c:C.blue}], CX, 526, t, {t0:TM.l2 + .15, align:'center', out:[TM.out2, .3]});
+  T.line(ctx, [{s:'“I', f:EX, c:C.ink}, {s:' have to', f:EXB, c:C.blue}, {s:' wear a uniform.”', f:EX, c:C.ink}], CX, 1450, t, {t0:TM.ex2, st:.04, d:.45, rise:18, align:'center', out:[TM.out2, .3]});
+});
+
+// Scene 3: MUST, the same arrows reversed, radiating out from within
+film.scene(6.7, TM.slide[1] + .05, (ctx, t) => {
+  ctx.save(); ctx.translate(slideX(t), 0); ctx.globalAlpha = 1 - E.inCubic(prog(t, ...TM.slide));
+  for (let i = 0; i < NA; i++) {
+    const t0 = TM.arrOut + i * ST, p = E.outCubic(prog(t, t0, t0 + GROW)); if (p <= 0) continue;
+    const [ix, iy] = ring(i, IN[0], IN[1]), [ox, oy] = ring(i, OUT[0], OUT[1]);
+    curvedArrow(ctx, ix, iy, ox, oy, 0, p, C.red, 7, -22);
+    const [cx, cy] = ring(i, ICON[0], ICON[1]);
+    icon(ctx, ICONS_OUT[i % 2], cx, cy, .85 + .15 * E.outBack(prog(t, t0 + .25, t0 + .55)), C.red, E.outCubic(prog(t, t0 + .25, t0 + .5)));
+  }
+  ctx.restore();
+  T.eyebrow(ctx, [{s:'MUST', c:C.red}], CX, 300, t, TM.ey3, {size:32, align:'center', out:[TM.out3, .25]});
+  T.line(ctx, [{s:'Drive from', f:HL, c:C.ink}], CX, 420, t, {t0:TM.l3, align:'center', out:[TM.out3, .3]});
+  T.line(ctx, [{s:'within.', f:HLI, c:C.red}], CX, 526, t, {t0:TM.l3 + .15, align:'center', out:[TM.out3, .3]});
+  T.line(ctx, [{s:'“I', f:EX, c:C.ink}, {s:' must', f:EXB, c:C.red}, {s:' call my dad.”', f:EX, c:C.ink}], CX, 1450, t, {t0:TM.ex3, st:.04, d:.45, rise:18, align:'center', out:[TM.out3, .3]});
+});
+
+// Scene 4: MUST as a conclusion, a lit window at dusk
+const WIN = [620, 1012];   // lit window centre: the gather point into scene 5
+const stars = Array.from({length:22}, (_, i) => [CX - 300 + hash(i, 1) * 600, 700 + hash(i, 2) * 230, 1.6 + hash(i, 3) * 2.2]);
+function house(ctx, t) {
+  ctx.save(); ctx.beginPath(); ctx.arc(CX, FY, 330, 0, 7); ctx.clip();
+  const sky = ctx.createLinearGradient(0, FY - 330, 0, FY + 330); sky.addColorStop(0, '#24304f'); sky.addColorStop(.75, '#5b6688'); sky.addColorStop(1, '#8a7f86');
+  ctx.fillStyle = sky; ctx.fillRect(CX - 340, FY - 340, 680, 680);
+  ctx.fillStyle = 'rgba(250,240,220,.85)'; stars.forEach(([x, y, r], i) => { ctx.globalAlpha = .55 + .45 * Math.sin(t * 2.2 + i * 1.7) ** 2; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill(); }); ctx.globalAlpha = 1;
+  ctx.fillStyle = '#f3e3b8'; ctx.beginPath(); ctx.arc(388, 800, 42, 0, 7); ctx.fill(); ctx.fillStyle = '#2a3554'; ctx.beginPath(); ctx.arc(406, 788, 38, 0, 7); ctx.fill();   // crescent
+  ctx.fillStyle = '#3a4634'; ctx.beginPath(); ctx.ellipse(CX, FY + 330, 460, 170, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = '#3a2e2a'; ctx.strokeStyle = '#1e1714'; ctx.lineWidth = 5; ctx.lineJoin = 'round';
+  ctx.fillRect(642, 790, 34, 80);                                                                     // chimney
+  ctx.beginPath(); ctx.moveTo(352, 912); ctx.lineTo(CX, 770); ctx.lineTo(728, 912); ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.fillRect(386, 905, 308, 280); ctx.strokeRect(386, 905, 308, 280);
+  ctx.fillStyle = '#4c3a30'; ctx.fillRect(512, 1080, 56, 105);                                        // door
+  const on = t >= TM.light + .1 ? 1 : t >= TM.light ? .55 : 0;
+  ctx.fillStyle = '#4a4d5e'; ctx.fillRect(420, 967, 90, 90);
+  ctx.fillStyle = on ? (on < 1 ? '#c9a95a' : '#ffd977') : '#4a4d5e'; ctx.fillRect(WIN[0] - 45, WIN[1] - 45, 90, 90);
+  ctx.strokeStyle = '#1e1714'; ctx.lineWidth = 4; [[465, 1012], WIN].forEach(([x, y]) => { ctx.strokeRect(x - 45, y - 45, 90, 90); ctx.beginPath(); ctx.moveTo(x, y - 45); ctx.lineTo(x, y + 45); ctx.moveTo(x - 45, y); ctx.lineTo(x + 45, y); ctx.stroke(); });
+  if (on) add(ctx, () => { glow(ctx, WIN[0], WIN[1], 190, '#ffc650', .42 * on, .45); glow(ctx, WIN[0], WIN[1] + 150, 160, '#ffc650', .12 * on, .5); });
+  ctx.restore();
+  ctx.strokeStyle = C.ink; ctx.lineWidth = 7; ctx.beginPath(); ctx.arc(CX, FY, 330, 0, 7); ctx.stroke();
+  ctx.strokeStyle = rgba(C.gold, .8); ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(CX, FY, 343, 0, 7); ctx.stroke();
+}
+film.scene(TM.slide[0], TM.gather[1] + .05, (ctx, t) => {
+  ctx.save();
+  const g = E.inCubic(prog(t, ...TM.gather));   // shrink onto the lit window
+  ctx.translate(W + slideX(t), 0);
+  ctx.translate(WIN[0], WIN[1]); ctx.scale(1 - g * .985, 1 - g * .985); ctx.translate(-WIN[0], -WIN[1]);
+  ctx.globalAlpha = E.outCubic(prog(t, TM.slide[0], TM.slide[1] - .1));
+  house(ctx, t); ctx.restore();
+  T.eyebrow(ctx, [{s:'MUST', c:C.red}, {s:' · LOGIC', c:C.muted}], CX, 300, t, TM.ey4, {size:32, align:'center', out:[TM.out4, .25]});
+  T.line(ctx, [{s:'Also a', f:HL, c:C.ink}], CX, 420, t, {t0:TM.l4, align:'center', out:[TM.out4, .3]});
+  T.line(ctx, [{s:'conclusion.', f:HLI, c:C.red}], CX, 526, t, {t0:TM.l4 + .15, align:'center', out:[TM.out4, .3]});
+  T.line(ctx, [{s:'Lights on? She', f:EX, c:C.ink}, {s:' must', f:EXB, c:C.red}, {s:' be home.', f:EX, c:C.ink}], CX, 1450, t, {t0:TM.ex4, st:.04, d:.45, rise:18, align:'center', out:[TM.out4, .3]});
+});
+
+// Scene 5: DEUTSCH, both streams flow into one word
+const NP = 64, parts = Array.from({length:NP}, (_, i) => {
+  const side = i % 2 ? -1 : 1, burst = i < 18;
+  const s = burst ? TM.seed[1] - .1 + hash(i, 4) * .18 : TM.arrive + .1 + hash(i, 5) * 2.7;
+  const x0 = side < 0 ? -60 : W + 60, y0 = 660 + hash(i, 6) * 720;
+  const x2 = burst ? CX : CX + (side < 0 ? -290 : 290), y2 = FY + (burst ? 0 : (hash(i, 7) - .5) * 60);
+  return {side, s, d:.7 + hash(i, 8) * .2, x0, y0, x1:lerp(x0, x2, .5), y1:y0 + (hash(i, 9) - .5) * 520, x2, y2};
+});
+const bez = (p, u) => [(1 - u) ** 2 * p.x0 + 2 * (1 - u) * u * p.x1 + u * u * p.x2, (1 - u) ** 2 * p.y0 + 2 * (1 - u) * u * p.y1 + u * u * p.y2];
+film.scene(TM.gather[0], TM.up[1] + .1, (ctx, t) => {
+  // the window light travels to centre and becomes the seed of müssen
+  const sp = E.inOutCubic(prog(t, ...TM.seed)), sx = lerp(WIN[0], CX, sp), sy = lerp(WIN[1], FY, sp);
+  const seedA = prog(t, TM.gather[0] + .2, TM.gather[1]) * (1 - .6 * prog(t, TM.arrive, TM.arrive + .6)) * (1 - prog(t, TM.up[0], TM.up[1]));
+  glow(ctx, sx, sy, 120 + 260 * prog(t, TM.seed[0], TM.arrive), C.gold, .45 * seedA, .6);
+  add(ctx, () => glow(ctx, sx, sy, 60, '#ffe7a6', .5 * seedA, .5));
+  for (const p of parts) {
+    const u = prog(t, p.s, p.s + p.d); if (u <= 0 || u >= 1) continue;
+    const uu = E.inOutCubic(u), [x, y] = bez(p, uu), [bx, by] = bez(p, Math.max(0, uu - .06));
+    curvedArrow(ctx, bx, by, x, y, 0, 1, p.side < 0 ? C.blue : C.red, 5, 0);
+  }
+  T.eyebrow(ctx, [{s:'DEUTSCH', c:C.goldInk}], CX, 300, t, TM.ey5, {size:32, align:'center', out:[TM.out5, .25]});
+  T.line(ctx, [{s:'One word,', f:HL, c:C.ink}], CX, 420, t, {t0:TM.l5, align:'center', out:[TM.out5, .3]});
+  T.line(ctx, [{s:'both senses.', f:HLI, c:C.goldInk}], CX, 526, t, {t0:TM.l5 + .15, align:'center', out:[TM.out5, .3]});
+  T.line(ctx, [{s:'ich muss', f:`italic 600 54px ${T.DISP}`, c:C.goldInk}, {s:'  =  I must · I have to', f:EX, c:C.ink}], CX, 1450, t, {t0:TM.ex5, st:.04, d:.45, rise:18, align:'center', out:[TM.out5, .3]});
+});
+
+// The müssen banner: lands at 14.75, rises to head the cards at 17.9, leaves at 22.15
+function banner(ctx, x, y, s, a) {
+  if (a <= .01 || s <= .01) return;
+  ctx.save(); ctx.globalAlpha *= a; ctx.translate(x, y); ctx.scale(s, s);
+  ctx.lineJoin = 'round'; ctx.strokeStyle = C.ink; ctx.lineWidth = 5;
+  ctx.fillStyle = '#d9b46a';
+  [-1, 1].forEach(d => { ctx.beginPath(); ctx.moveTo(d * 300, -40); ctx.lineTo(d * 430, -30); ctx.lineTo(d * 385, 30); ctx.lineTo(d * 430, 95); ctx.lineTo(d * 300, 90); ctx.closePath(); ctx.fill(); ctx.stroke(); });
+  ctx.fillStyle = '#efd9a8';
+  ctx.beginPath(); ctx.moveTo(-340, -82); ctx.bezierCurveTo(-120, -112, 120, -52, 340, -82); ctx.lineTo(340, 66); ctx.bezierCurveTo(120, 36, -120, 96, -340, 66); ctx.closePath(); ctx.fill(); ctx.stroke();
+  T.label(ctx, 'müssen', 0, 30, `italic 600 140px ${T.DISP}`, '#3a2a12', 1, 'center');
+  ctx.restore();
+}
+const bannerAt = t => {
+  const u = E.inOutCubic(prog(t, ...TM.up));
+  return {y:lerp(FY, 690, u), s:E.outBack(prog(t, TM.arrive, TM.arrive + .4)) * lerp(1, .55, u), a:1 - E.inCubic(prog(t, TM.out6, TM.out6 + .3))};
+};
+film.scene(TM.arrive, TM.out6 + .35, (ctx, t) => {
+  const b = bannerAt(t), ring2 = prog(t, TM.arrive, TM.arrive + .7);
+  if (ring2 > 0 && ring2 < 1) { ctx.strokeStyle = rgba(C.gold, .7 * (1 - ring2)); ctx.lineWidth = 4; ctx.beginPath(); ctx.ellipse(CX, FY, 360 + 160 * E.outCubic(ring2), 120 + 70 * E.outCubic(ring2), 0, 0, 7); ctx.stroke(); }
+  glow(ctx, CX, b.y, 420 * b.s, C.gold, .25 * b.a * (1 - prog(t, TM.up[0], TM.up[1])), .7);
+  banner(ctx, CX, b.y, b.s, b.a);
+});
+
+// Scene 6: the negative trap
+function card(ctx, y, col, iconKind, t, t0) {
+  const p = E.outCubic(prog(t, t0, t0 + .45)), q = E.inCubic(prog(t, TM.out6, TM.out6 + .35)); if (p <= 0) return;
+  ctx.save(); ctx.globalAlpha = p * (1 - q); ctx.translate((1 - p) * -120, 0);
+  ctx.translate(CX, y + 110); ctx.scale(1 - .12 * q, 1 - .12 * q); ctx.translate(-CX, -(y + 110));
+  ctx.fillStyle = 'rgba(43,36,32,.10)'; ctx.beginPath(); ctx.roundRect(116, y + 10, 860, 220, 18); ctx.fill();
+  ctx.fillStyle = C.cream; ctx.strokeStyle = C.ink; ctx.lineWidth = 4; ctx.beginPath(); ctx.roundRect(110, y, 860, 220, 18); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = col; ctx.beginPath(); ctx.roundRect(110, y, 18, 220, [18, 0, 0, 18]); ctx.fill();
+  // icon on the right: an open circle with a tick (optional) or a no-entry sign (forbidden)
+  const ix = 880, iy = y + 110, ip = E.outBack(prog(t, t0 + .35, t0 + .75));
+  if (ip > 0) {
+    ctx.save(); ctx.translate(ix, iy); ctx.scale(ip, ip); ctx.lineWidth = 7; ctx.strokeStyle = col; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.arc(0, 0, 44, 0, 7); ctx.stroke();
+    if (iconKind === 'ok') { ctx.beginPath(); ctx.moveTo(-20, 2); ctx.lineTo(-5, 18); ctx.lineTo(22, -16); ctx.stroke(); }
+    else { ctx.beginPath(); ctx.moveTo(-31, 31); ctx.lineTo(31, -31); ctx.stroke(); }
+    ctx.restore();
+  }
+  ctx.restore();
+}
+film.scene(TM.up[0], TM.out6 + .4, (ctx, t) => {
+  card(ctx, 790, C.green, 'ok', t, TM.cardA);
+  card(ctx, 1080, C.red, 'no', t, TM.cardB);
+  const q = 1 - E.inCubic(prog(t, TM.out6, TM.out6 + .35));
+  const slideA = 1 - E.outCubic(prog(t, TM.cardA, TM.cardA + .45)), slideB = 1 - E.outCubic(prog(t, TM.cardB, TM.cardB + .45));
+  ctx.save(); ctx.globalAlpha = q; ctx.translate(slideA * -120, 0);
+  T.line(ctx, [{s:'du musst nicht', f:`600 64px ${T.DISP}`, c:C.ink}], 168, 880, t, {t0:TM.cardA + .1, st:.05, d:.45, rise:16});
+  T.line(ctx, [{s:'= you don’t have to', f:EXB, c:C.green}], 168, 958, t, {t0:TM.cardA + .35, st:.04, d:.45, rise:14});
+  ctx.restore();
+  ctx.save(); ctx.globalAlpha = q; ctx.translate(slideB * -120, 0);
+  T.line(ctx, [{s:'du darfst nicht', f:`600 64px ${T.DISP}`, c:C.ink}], 168, 1170, t, {t0:TM.cardB + .1, st:.05, d:.45, rise:16});
+  T.line(ctx, [{s:'= you must not', f:EXB, c:C.red}], 168, 1248, t, {t0:TM.cardB + .35, st:.04, d:.45, rise:14});
+  ctx.restore();
+  T.eyebrow(ctx, [{s:'CAREFUL', c:C.red}], CX, 300, t, TM.ey6, {size:32, align:'center', out:[TM.out6, .25]});
+  T.line(ctx, [{s:'The negative', f:HL, c:C.ink}], CX, 420, t, {t0:TM.l6, align:'center', out:[TM.out6, .3]});
+  T.line(ctx, [{s:'trap.', f:HLI, c:C.red}], CX, 526, t, {t0:TM.l6 + .15, align:'center', out:[TM.out6, .3]});
+});
+
+// Scene 7: end card, complete by ~24.4 s
+film.scene(TM.flash - .15, DUR, (ctx, t) => {
+  ctx.globalAlpha = E.inOutCubic(prog(t, TM.flash - .15, TM.flash)); ctx.drawImage(paper, 0, 0);
+  const z = 1 + .02 * E.inOutSine(prog(t, TM.flash, DUR)); ctx.translate(CX, 960); ctx.scale(z, z); ctx.translate(-CX, -960);
+  glow(ctx, 330, 860, 260, C.red, .16, .7); glow(ctx, 760, 990, 280, C.blue, .16, .7); glow(ctx, CX, 1130, 300, C.gold, .2, .7);
+  // ribbon flourish under the eyebrow
+  const rp = E.inOutCubic(prog(t, TM.fin, TM.fin + .8));
+  if (rp > 0) [C.red, C.gold, C.blue].forEach((col, k) => {
+    ctx.save(); ctx.strokeStyle = col; ctx.lineWidth = 4; ctx.lineCap = 'round'; ctx.beginPath();
+    for (let x = 300; x <= lerp(300, 780, rp); x += 6) { const y = 735 + 10 * Math.sin(x * .02 + k * .9) + (k - 1) * 7; x === 300 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); }
+    ctx.stroke(); ctx.restore();
+  });
+  T.eyebrow(ctx, [{s:'IN SHORT', c:C.goldInk}], CX, 690, t, TM.fin + .15, {size:32, align:'center'});
+  T.line(ctx, [{s:'must', f:HLI, c:C.red}, {s:' ≈ inside', f:HL, c:C.ink}], CX, 860, t, {t0:TM.fin + .3, align:'center', rise:36});
+  T.line(ctx, [{s:'have to', f:HLI, c:C.blue}, {s:' ≈ outside', f:HL, c:C.ink}], CX, 990, t, {t0:TM.fin + .6, align:'center', rise:36});
+  T.line(ctx, [{s:'müssen', f:HLI, c:C.goldInk}, {s:' = both', f:HL, c:C.ink}], CX, 1120, t, {t0:TM.fin + .9, align:'center', rise:36});
+  T.line(ctx, [{s:'A tendency, with lots of overlap.', f:`400 38px ${T.BODY}`, c:C.muted}], CX, 1230, t, {t0:TM.fin + 1.15, st:.04, d:.45, align:'center', rise:14});
+});
+
+/* 5. overlay ----------------------------------------------------------------- */
+film.overlay((ctx, t) => flash(ctx, t, TM.flash, CX, 1000, {color:C.gold, strength:.55, r:W * .45}));
+
+/* 6. cues ---------------------------------------------------------------------- */
+const inPops = [...Array(NA)].map((_, i) => +(TM.arrIn + i * ST + GROW * .55).toFixed(3));
+const outPops = [...Array(NA)].map((_, i) => +(TM.arrOut + i * ST).toFixed(3));
+film.cues = {
+  ribbon:.05, title:.3, labels:.95, merge:TM.merge[0],
+  inPops, retract:TM.retract[0], heart:6.75, outPops,
+  whips:[TM.slide], light:TM.light, gather:TM.gather, arrive:TM.arrive, up:TM.up[0],
+  cards:[TM.cardA, TM.cardB], flash:TM.flash, fin:TM.fin, endLines:[TM.fin + .3, TM.fin + .6, TM.fin + .9],
+  scenes:[0, 3.0, 6.75, 9.9, 13.6, 17.9, TM.flash],
+  transitions:[TM.merge, [6.3, 7.1], TM.slide, TM.gather, TM.up, [TM.out6, TM.flash + .3]],
+  sync:['inPops', 'outPops', 'cards'],
+};
+
+film.start([`500 40px ${T.DISP}`, `italic 500 40px ${T.DISP}`, `italic 600 40px ${T.DISP}`, `600 40px ${T.DISP}`, `400 20px ${T.BODY}`, `500 20px ${T.BODY}`, `500 20px ${T.MONO}`]);
+})();
+</script>
+</body>
+</html>
